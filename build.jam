@@ -21,6 +21,9 @@ local h7_dbg_cflags = -ggdb -Og ;
 local h7_rel_defs = NDEBUG ;
 local h7_rel_cflags = -O3 ;
 
+local h7_fpu_type = fpv5-sp-d16 ; # Technically has double precision, but no compiler support atm
+local h7_cpu_type = cortex-m7 ;
+
 local linker_dir = stm32h7/Device/ld ;
 
 # ------------------------------------------
@@ -41,7 +44,7 @@ local generic_h7_requirements_cflags =
 # Will be propagated to dependents
 local generic_h7_usage_requirements_cflags = 
     -mfloat-abi=hard
-    -mcpu=cortex-m7
+    -mcpu=$(h7_cpu_type)
     -mthumb
     ;
 
@@ -63,11 +66,11 @@ local generic_h7_requirements_link_flags =
     -mabi=aapcs 
     ;
 
-# Assumes all devices are Cortex-M4 processors with HW FPU.
+# Assumes all devices are Cortex-M7 processors with HW FPU.
 # Will be propagated to dependents.
 local generic_h7_usage_requirements_link_flags = 
     -mfloat-abi=hard 
-    -mcpu=cortex-m4
+    -mcpu=$(h7_cpu_type)
     -specs=nano.specs 
     -specs=nosys.specs
     ;
@@ -116,13 +119,13 @@ alias ALIAS_MCU_OPTIONS
     # Expect all these to be propagated to all projects
     :   <define>STM32H743xx                     
         <define>CHIMERA_LITTLE_ENDIAN                               # We are a little endian device
-        <linkflags>-mfpu=fpv4-sp-d16                                # Use hardware FPU
+        <linkflags>-mfpu=$(h7_fpu_type)                             # Use hardware FPU
         <linkflags>$(generic_h7_usage_requirements_link_flags)      
         <linkflags>-T$(linker_dir)/STM32H743ZI_flash.lds            # Linker script
         <cflags>$(generic_h7_usage_requirements_cflags)             
-        <cflags>-mfpu=fpv4-sp-d16                                  
+        <cflags>-mfpu=$(h7_fpu_type)
         <cxxflags>$(generic_h7_usage_requirements_cflags)           
-        <cxxflags>-mfpu=fpv4-sp-d16
+        <cxxflags>-mfpu=$(h7_fpu_type)
     ;
 
 lib LIB_TARGET_STARTUP 
