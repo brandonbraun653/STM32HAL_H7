@@ -1,0 +1,244 @@
+import lib/CommonTools/boost-build/features/thor ;
+
+# ====================================================
+# Local Rules 
+# ====================================================
+local rule explicit_alias ( name : sources * : requirements * : default-build * : usage-requirements * )
+    {
+    alias $(name) : $(sources) : $(requirements) : $(default-build) : $(usage-requirements) ;
+    explicit $(name) ;
+    }
+
+# ====================================================
+# Local Resources 
+# ====================================================
+# ------------------------------------------
+# Build Target Specific Options 
+# ------------------------------------------
+local h7_dbg_defs = DEBUG ;
+local h7_dbg_cflags = -ggdb -Og ;
+
+local h7_rel_defs = NDEBUG ;
+local h7_rel_cflags = -O3 ;
+
+local linker_dir = stm32h7/Device/ld ;
+
+# ------------------------------------------
+# Generic STM32H7 Family CFlags
+# ------------------------------------------
+# Applies to all H7 targets, but not propagated to dependents.
+local generic_h7_requirements_cflags = 
+    -fno-common
+    -fmessage-length=0
+    -fno-exceptions
+    -ffunction-sections
+    -fdata-sections
+    -Wall
+    --std=gnu11 
+    ;
+
+# Assumes all devices are Cortex-M4 processors with HW FPU.
+# Will be propagated to dependents
+local generic_h7_usage_requirements_cflags = 
+    -mfloat-abi=hard
+    -mcpu=cortex-m7
+    -mthumb
+    ;
+
+local generic_h7_usage_requirements_cxxflags = 
+    $(generic_h7_usage_requirements_cflags)
+    ;
+
+local all_generic_h7_cflags =
+    $(generic_h7_requirements_cflags)
+    $(generic_h7_usage_requirements_cflags)
+    ;
+
+# ------------------------------------------
+# Generic STM32H7 Family Linker Flags
+# ------------------------------------------
+# Applies to all H7 targets, but not propagated to dependents.
+local generic_h7_requirements_link_flags = 
+    -mthumb 
+    -mabi=aapcs 
+    ;
+
+# Assumes all devices are Cortex-M4 processors with HW FPU.
+# Will be propagated to dependents.
+local generic_h7_usage_requirements_link_flags = 
+    -mfloat-abi=hard 
+    -mcpu=cortex-m4
+    -specs=nano.specs 
+    -specs=nosys.specs
+    ;
+
+local all_generic_h7_link_flags = 
+    $(generic_h7_requirements_link_flags)
+    $(generic_h7_usage_requirements_link_flags)
+    ;
+
+# ------------------------------------------
+# Source/Include Directories 
+# ------------------------------------------
+local h7_hal_driver_src_dir = stm32h7/STM32H7xx_HAL_Driver/Src ;
+local h7_dev_system_src_dir = stm32h7/Device/sys ;
+local h7_dev_startup_src_dir = stm32h7/Device/startup ;
+
+local h7_include_dir = . ;
+
+# ------------------------------------------
+# Source Files
+# ------------------------------------------
+local h7_common_src = $(h7_dev_system_src_dir)/system_stm32h7xx.c ;
+local h7_ll_src = [ glob $(h7_hal_driver_src_dir)/stm32h7xx_ll*.c ] ;
+local h7_hal_src = [ glob $(h7_hal_driver_src_dir)/stm32h7xx_hal*.c ] ;
+
+# ====================================================
+# Project Definition
+# ====================================================
+project STM32H7_HAL_DRIVER : usage-requirements <include>$(h7_include_dirs) ;
+
+# ====================================================
+# Device Specific Libs: 
+#   Figures out what device we are actually compiling for. By default
+#   propagates MCU specific defines/cflags/linkflags in the usage-requirements 
+#   field. This is how so many chip variants are supported without much effort.
+# ====================================================
+
+# ------------------------------------------
+# STM32H743RE
+# ------------------------------------------
+alias ALIAS_MCU_OPTIONS 
+    : 
+    :   <Thor>enabled-H743
+        <Thor>enabled-ZI
+    :
+    # Expect all these to be propagated to all projects
+    :   <define>STM32H743xx                     
+        <define>CHIMERA_LITTLE_ENDIAN                               # We are a little endian device
+        <linkflags>-mfpu=fpv4-sp-d16                                # Use hardware FPU
+        <linkflags>$(generic_h7_usage_requirements_link_flags)      
+        <linkflags>-T$(linker_dir)/STM32H743ZI_flash.lds            # Linker script
+        <cflags>$(generic_h7_usage_requirements_cflags)             
+        <cflags>-mfpu=fpv4-sp-d16                                  
+        <cxxflags>$(generic_h7_usage_requirements_cflags)           
+        <cxxflags>-mfpu=fpv4-sp-d16
+    ;
+
+lib LIB_TARGET_STARTUP 
+    :   $(h7_dev_startup_src_dir)/startup_stm32h743xx.c
+    
+    :   <Thor>enabled-H743
+        <link>static
+        <define>DEBUG_DEFAULT_INTERRUPT_HANDLERS
+        <use>ALIAS_MCU_OPTIONS 
+    ;
+
+# ------------------------------------------
+# Add more here
+# ------------------------------------------
+
+explicit LIB_TARGET_STARTUP ;
+explicit ALIAS_MCU_OPTIONS ;
+
+# ====================================================
+# STM32 HAL Low Level Driver 
+# ====================================================
+# ------------------------------------------
+# Debug Variant
+# ------------------------------------------
+lib LL_DRIVER 
+    :   $(h7_ll_src)
+        $(h7_common_src)
+        LIB_TARGET_STARTUP
+
+    :   <variant>debug
+        <link>static
+        <include>$(h7_include_dir)
+        <define>$(h7_dbg_defs)
+        <define>USE_FULL_LL_DRIVER
+        <cflags>$(h7_dbg_cflags)
+        <cflags>$(all_generic_h7_cflags)
+        <use>ALIAS_MCU_OPTIONS
+    :
+    :   <use>ALIAS_MCU_OPTIONS              # Non-lib chip specific compiler/linker options
+        <define>USE_FULL_LL_DRIVER
+    ;
+
+# ------------------------------------------
+# Release Variant
+# ------------------------------------------
+lib LL_DRIVER 
+    :   $(h7_ll_src) 
+        $(h7_common_src)
+        LIB_TARGET_STARTUP
+
+    :   <variant>release
+        <link>static
+        <include>$(h7_include_dir)
+        <define>$(h7_rel_defs)
+        <define>USE_FULL_LL_DRIVER
+        <cflags>$(h7_rel_cflags)
+        <cflags>$(all_generic_h7_cflags)
+        <use>ALIAS_MCU_OPTIONS
+    :
+    :   <use>ALIAS_MCU_OPTIONS              # Non-lib chip specific compiler/linker options
+        <define>USE_FULL_LL_DRIVER
+    ;
+
+explicit LL_DRIVER ;
+
+# ====================================================
+# STM32 HAL Standard Driver 
+# ====================================================
+# ------------------------------------------
+# Debug Variant
+# ------------------------------------------
+lib HAL_DRIVER 
+    :   $(h7_hal_src)  
+        $(h7_common_src)
+        LIB_TARGET_STARTUP
+
+    :   <variant>debug
+        <link>static
+        <include>$(h7_include_dir)
+        <define>$(h7_dbg_defs)
+        <cflags>$(h7_dbg_cflags)
+        <cflags>$(all_generic_h7_cflags)
+        <use>ALIAS_MCU_OPTIONS
+    :
+    :   <use>ALIAS_MCU_OPTIONS              # Non-lib chip specific compiler/linker options
+    ;
+
+# ------------------------------------------
+# Release Variant
+# ------------------------------------------
+lib HAL_DRIVER
+    :   $(h7_hal_src) 
+        $(h7_common_src)
+        LIB_TARGET_STARTUP
+
+    :   <variant>release
+        <link>static
+        <include>$(h7_include_dir)
+        <define>$(h7_rel_defs)
+        <cflags>$(h7_rel_cflags)
+        <cflags>$(all_generic_h7_cflags)
+        <use>ALIAS_MCU_OPTIONS
+    :
+    :   <use>ALIAS_MCU_OPTIONS              # Non-lib chip specific compiler/linker options
+    ;
+
+explicit HAL_DRIVER ;
+
+# ====================================================
+# Public Components 
+# ====================================================
+explicit_alias PUB : : : : <include>$(h7_include_dir) ;
+
+# ====================================================
+# Aliases to build from command line
+# ====================================================
+explicit_alias H7_HAL : HAL_DRIVER  ;
+explicit_alias H7_LL : LL_DRIVER ;
+explicit_alias H7_LIB : HAL_DRIVER LL_DRIVER ;
